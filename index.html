@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RoyalPlus Demo</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <section class="battle-frame" aria-label="RoyalPlus battle demo">
+        <header class="top-hud">
+          <div class="side-badge enemy">
+            <span class="crown-row" id="enemyCrowns">0</span>
+            <strong>North Banner</strong>
+          </div>
+          <div class="timer-panel">
+            <span id="matchPhase">Battle</span>
+            <strong id="timer">03:00</strong>
+          </div>
+          <button class="icon-button" id="restartButton" type="button" aria-label="Restart match">↻</button>
+        </header>
+
+        <div class="arena-wrap">
+          <canvas id="arena" width="900" height="1200" aria-label="Battle arena"></canvas>
+          <div class="toast" id="toast" role="status" aria-live="polite"></div>
+          <div class="match-result" id="matchResult" hidden>
+            <span id="resultKicker">Match End</span>
+            <strong id="resultTitle">Draw</strong>
+            <button id="playAgainButton" type="button">Play Again</button>
+          </div>
+        </div>
+
+        <footer class="bottom-hud">
+          <div class="player-strip">
+            <div class="side-badge friendly">
+              <span class="crown-row" id="playerCrowns">0</span>
+              <strong>RoyalPlus</strong>
+            </div>
+            <div class="energy-block">
+              <div class="energy-meta">
+                <span>Energy</span>
+                <strong id="energyLabel">5.0 / 10</strong>
+              </div>
+              <div class="energy-track">
+                <div id="energyFill"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-hand" id="cardHand" aria-label="Card hand"></div>
+        </footer>
+      </section>
+
+      <aside class="preview-panel">
+        <img src="./public/assets/generated/royalplus-asset-sheet.png" alt="Original generated RoyalPlus visual sheet" />
+        <div>
+          <strong>RoyalPlus Demo</strong>
+          <span>Original generated asset sheet used as visual reference.</span>
+        </div>
+      </aside>
+    </main>
+
+    <script src="./src/app.js"></script>
+  </body>
+</html>
