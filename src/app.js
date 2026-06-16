@@ -11,11 +11,13 @@ const restartButton = document.getElementById("restartButton");
 const playAgainButton = document.getElementById("playAgainButton");
 const playerCrowns = document.getElementById("playerCrowns");
 const enemyCrowns = document.getElementById("enemyCrowns");
+const versionLabel = document.getElementById("versionLabel");
 
 const W = canvas.width;
 const H = canvas.height;
 const DEPLOY_Y = 605;
 const MAX_ENERGY = 10;
+const VERSION = "0.1.2";
 
 const cards = [
   {
@@ -25,6 +27,7 @@ const cards = [
     type: "melee",
     cost: 2,
     color: ["#74d1ff", "#163a55"],
+    attackKind: "melee",
     unit: { hp: 110, damage: 16, range: 48, speed: 54, radius: 19, cooldown: 0.9 }
   },
   {
@@ -34,6 +37,7 @@ const cards = [
     type: "ranged",
     cost: 3,
     color: ["#ffb25f", "#5d2419"],
+    attackKind: "projectile",
     unit: { hp: 72, damage: 13, range: 145, speed: 44, radius: 16, cooldown: 0.75 }
   },
   {
@@ -43,6 +47,7 @@ const cards = [
     type: "rush",
     cost: 4,
     color: ["#a7f06d", "#264b2f"],
+    attackKind: "melee",
     unit: { hp: 150, damage: 22, range: 42, speed: 78, radius: 22, cooldown: 1.1 }
   },
   {
@@ -52,6 +57,7 @@ const cards = [
     type: "tank",
     cost: 5,
     color: ["#c6ced8", "#343d4a"],
+    attackKind: "melee",
     unit: { hp: 280, damage: 24, range: 46, speed: 32, radius: 28, cooldown: 1.35 }
   }
 ];
@@ -71,6 +77,8 @@ function resetGame() {
     playerCrowns: 0,
     enemyCrowns: 0,
     entities: [],
+    projectiles: [],
+    effects: [],
     floaters: [],
     towers: [
       tower("enemy-left", "enemy", 260, 188, 980, false),
@@ -88,7 +96,7 @@ function resetGame() {
 }
 
 function tower(id, owner, x, y, hp, king) {
-  return { id, owner, x, y, hp, maxHp: hp, king, range: king ? 185 : 165, damage: king ? 30 : 24, cooldown: 0 };
+  return { id, owner, x, y, hp, maxHp: hp, king, range: king ? 185 : 165, damage: king ? 30 : 24, cooldown: 0, radius: king ? 42 : 34 };
 }
 
 function showToast(message) {
@@ -178,6 +186,8 @@ function deployUnit(owner, card, x, y) {
     name: card.name,
     icon: card.icon,
     color: card.color[0],
+    deepColor: card.color[1],
+    attackKind: card.attackKind,
     x: spawnX,
     y,
     laneX,
@@ -213,6 +223,8 @@ function update(dt) {
 
   updateTowers(dt);
   updateUnits(dt);
+  updateProjectiles(dt);
+  updateEffects(dt);
   updateFloaters(dt);
   removeDead();
   checkEnd();
@@ -235,8 +247,18 @@ function updateTowers(dt) {
     currentTower.cooldown = Math.max(0, currentTower.cooldown - dt);
     const target = nearestEnemy(currentTower, state.entities, currentTower.range);
     if (target && currentTower.cooldown <= 0) {
-      target.hp -= currentTower.damage;
-      addFloater(`-${currentTower.damage}`, target.x, target.y - target.radius - 6, "#fff2ac");
+      addProjectile({
+        owner: currentTower.owner,
+        x: currentTower.x,
+        y: currentTower.y - 34,
+        target,
+        damage: currentTower.damage,
+        speed: currentTower.king ? 520 : 470,
+        radius: currentTower.king ? 9 : 7,
+        color: currentTower.owner === "player" ? "#8fd9ff" : "#ff9a8f",
+        trail: currentTower.owner === "player" ? "rgba(89, 194, 255, 0.32)" : "rgba(255, 120, 103, 0.32)",
+        hitColor: "#ffe29a"
+      });
       currentTower.cooldown = currentTower.king ? 0.85 : 1.05;
     }
   }
@@ -251,8 +273,23 @@ function updateUnits(dt) {
 
     if (target) {
       if (unit.cooldown <= 0) {
-        target.hp -= unit.damage;
-        addFloater(`-${unit.damage}`, target.x, target.y - 18, unit.owner === "player" ? "#bfe8ff" : "#ffc2c2");
+        if (unit.attackKind === "projectile") {
+          addProjectile({
+            owner: unit.owner,
+            x: unit.x,
+            y: unit.y - unit.radius * 0.35,
+            target,
+            damage: unit.damage,
+            speed: 430,
+            radius: 6,
+            color: "#ffcf7a",
+            trail: "rgba(255, 156, 78, 0.36)",
+            hitColor: unit.owner === "player" ? "#bfe8ff" : "#ffc2c2"
+          });
+        } else {
+          applyDamage(target, unit.damage, unit.owner === "player" ? "#bfe8ff" : "#ffc2c2");
+          addMeleeEffect(unit, target);
+        }
         unit.cooldown = unit.attackRate;
       }
       continue;
@@ -266,6 +303,87 @@ function updateUnits(dt) {
       unit.y = goalY;
     }
   }
+}
+
+
+function addProjectile(projectile) {
+  state.projectiles.push({
+    id: `p-${Math.random().toString(16).slice(2)}`,
+    vx: 0,
+    vy: 0,
+    ttl: 1.2,
+    ...projectile
+  });
+}
+
+function addMeleeEffect(source, target) {
+  const angle = Math.atan2(target.y - source.y, target.x - source.x);
+  state.effects.push({
+    type: "slash",
+    owner: source.owner,
+    x: target.x,
+    y: target.y,
+    angle,
+    radius: Math.max(36, source.radius + 24),
+    ttl: 0.22,
+    life: 0.22,
+    color: source.owner === "player" ? "#c8ecff" : "#ffd0c9"
+  });
+}
+
+function addImpactEffect(target, color) {
+  state.effects.push({
+    type: "impact",
+    x: target.x,
+    y: target.y,
+    radius: (target.radius || 34) + 18,
+    ttl: 0.28,
+    life: 0.28,
+    color
+  });
+}
+
+function applyDamage(target, damage, color) {
+  if (!target || target.hp <= 0) return;
+  target.hp -= damage;
+  addFloater("-" + damage, target.x, target.y - (target.radius || 32) - 8, color);
+}
+
+function updateProjectiles(dt) {
+  for (const projectile of state.projectiles) {
+    projectile.ttl -= dt;
+    if (!projectile.target || projectile.target.hp <= 0) {
+      projectile.ttl = 0;
+      continue;
+    }
+    const targetX = projectile.target.x;
+    const targetY = projectile.target.y - (projectile.target.radius || 30) * 0.2;
+    const dx = targetX - projectile.x;
+    const dy = targetY - projectile.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const travel = projectile.speed * dt;
+    projectile.vx = dx / distance;
+    projectile.vy = dy / distance;
+
+    if (distance <= travel + projectile.radius + 4) {
+      projectile.x = targetX;
+      projectile.y = targetY;
+      applyDamage(projectile.target, projectile.damage, projectile.hitColor);
+      addImpactEffect(projectile.target, projectile.color);
+      projectile.ttl = 0;
+    } else {
+      projectile.x += projectile.vx * travel;
+      projectile.y += projectile.vy * travel;
+    }
+  }
+  state.projectiles = state.projectiles.filter((projectile) => projectile.ttl > 0);
+}
+
+function updateEffects(dt) {
+  for (const effect of state.effects) {
+    effect.ttl -= dt;
+  }
+  state.effects = state.effects.filter((effect) => effect.ttl > 0);
 }
 
 function nearestEnemy(source, candidates, range) {
@@ -315,7 +433,9 @@ function checkEnd() {
 function render() {
   drawArena();
   drawTowers();
+  drawProjectiles();
   drawUnits();
+  drawEffects();
   drawPointerPreview();
   drawFloaters();
   updateHud();
@@ -387,15 +507,55 @@ function drawTowers() {
     const alive = towerItem.hp > 0;
     ctx.save();
     ctx.globalAlpha = alive ? 1 : 0.35;
-    ctx.fillStyle = towerItem.owner === "player" ? "#3e9bff" : "#e65656";
+
+    const accent = towerItem.owner === "player" ? "#3e9bff" : "#e65656";
+    const sideLight = towerItem.owner === "player" ? "#93d6ff" : "#ffaaa2";
+    const body = towerItem.king ? "#f4c45d" : "#cbd4df";
+    const baseRadius = towerItem.king ? 50 : 42;
+
+    ctx.shadowColor = "rgba(0, 0, 0, 0.42)";
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
     ctx.beginPath();
-    ctx.arc(towerItem.x, towerItem.y, towerItem.king ? 42 : 34, 0, Math.PI * 2);
+    ctx.ellipse(towerItem.x + 10, towerItem.y + 45, baseRadius, 20, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = towerItem.king ? "#f7c85f" : "#d7dde8";
-    roundRect(towerItem.x - 28, towerItem.y - 48, 56, 62, 8, true);
-    ctx.fillStyle = "#263142";
-    roundRect(towerItem.x - 18, towerItem.y - 64, 36, 22, 5, true);
-    drawHealth(towerItem.x - 42, towerItem.y + 46, 84, towerItem.hp / towerItem.maxHp, towerItem.owner);
+    ctx.shadowBlur = 0;
+
+    const base = ctx.createLinearGradient(towerItem.x - baseRadius, towerItem.y, towerItem.x + baseRadius, towerItem.y + 52);
+    base.addColorStop(0, sideLight);
+    base.addColorStop(0.48, accent);
+    base.addColorStop(1, "#172131");
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.ellipse(towerItem.x, towerItem.y + 16, baseRadius, baseRadius * 0.58, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const towerBody = ctx.createLinearGradient(towerItem.x - 32, towerItem.y - 70, towerItem.x + 35, towerItem.y + 26);
+    towerBody.addColorStop(0, "#fff7d7");
+    towerBody.addColorStop(0.22, body);
+    towerBody.addColorStop(0.72, "#777f8c");
+    towerBody.addColorStop(1, "#222b39");
+    ctx.fillStyle = towerBody;
+    roundRect(towerItem.x - 31, towerItem.y - 56, 62, 74, 10, true);
+
+    ctx.fillStyle = accent;
+    roundRect(towerItem.x - 23, towerItem.y - 71, 46, 28, 7, true);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.42)";
+    roundRect(towerItem.x - 17, towerItem.y - 66, 18, 8, 4, true);
+
+    if (towerItem.king) {
+      ctx.fillStyle = "#ffe278";
+      ctx.beginPath();
+      ctx.moveTo(towerItem.x - 22, towerItem.y - 74);
+      ctx.lineTo(towerItem.x - 10, towerItem.y - 98);
+      ctx.lineTo(towerItem.x, towerItem.y - 76);
+      ctx.lineTo(towerItem.x + 10, towerItem.y - 98);
+      ctx.lineTo(towerItem.x + 22, towerItem.y - 74);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    drawHealth(towerItem.x - 46, towerItem.y + 58, 92, towerItem.hp / towerItem.maxHp, towerItem.owner);
     ctx.restore();
   });
 }
@@ -403,23 +563,108 @@ function drawTowers() {
 function drawUnits() {
   state.entities.forEach((unit) => {
     ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.35)";
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = unit.owner === "player" ? "#2c8be8" : "#d94444";
+    const r = unit.radius;
+    const accent = unit.owner === "player" ? "#2c8be8" : "#d94444";
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
     ctx.beginPath();
-    ctx.arc(unit.x, unit.y, unit.radius + 3, 0, Math.PI * 2);
+    ctx.ellipse(unit.x + 7, unit.y + r * 0.72, r * 1.25, r * 0.48, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.shadowColor = "rgba(0,0,0,0.42)";
+    ctx.shadowBlur = 12;
+    const body = ctx.createRadialGradient(unit.x - r * 0.36, unit.y - r * 0.55, r * 0.2, unit.x, unit.y, r * 1.12);
+    body.addColorStop(0, "#ffffff");
+    body.addColorStop(0.22, unit.color);
+    body.addColorStop(0.72, unit.deepColor);
+    body.addColorStop(1, "#111827");
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(unit.x, unit.y, r, r * 1.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.shadowBlur = 0;
-    ctx.fillStyle = unit.color;
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.arc(unit.x, unit.y, unit.radius, 0, Math.PI * 2);
+    ctx.arc(unit.x, unit.y, r + 3, Math.PI * 0.13, Math.PI * 0.87);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(255,255,255,0.44)";
+    ctx.beginPath();
+    ctx.ellipse(unit.x - r * 0.32, unit.y - r * 0.42, r * 0.28, r * 0.16, -0.45, 0, Math.PI * 2);
     ctx.fill();
+
     ctx.fillStyle = "#10131b";
-    ctx.font = `${Math.max(18, unit.radius)}px system-ui`;
+    ctx.font = `900 ${Math.max(18, r)}px system-ui`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(unit.icon, unit.x, unit.y + 1);
-    drawHealth(unit.x - 28, unit.y - unit.radius - 14, 56, unit.hp / unit.maxHp, unit.owner);
+    drawHealth(unit.x - 30, unit.y - r - 18, 60, unit.hp / unit.maxHp, unit.owner);
+    ctx.restore();
+  });
+}
+
+function drawProjectiles() {
+  state.projectiles.forEach((projectile) => {
+    ctx.save();
+    ctx.strokeStyle = projectile.trail;
+    ctx.lineWidth = projectile.radius * 1.8;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(projectile.x - projectile.vx * 32, projectile.y - projectile.vy * 32);
+    ctx.lineTo(projectile.x, projectile.y);
+    ctx.stroke();
+
+    const glow = ctx.createRadialGradient(projectile.x - 2, projectile.y - 2, 1, projectile.x, projectile.y, projectile.radius * 2.4);
+    glow.addColorStop(0, "#fffbe0");
+    glow.addColorStop(0.36, projectile.color);
+    glow.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(projectile.x, projectile.y, projectile.radius * 2.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff7cb";
+    ctx.beginPath();
+    ctx.arc(projectile.x, projectile.y, projectile.radius * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawEffects() {
+  state.effects.forEach((effect) => {
+    const progress = 1 - effect.ttl / effect.life;
+    const alpha = Math.max(0, effect.ttl / effect.life);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    if (effect.type === "slash") {
+      ctx.translate(effect.x, effect.y);
+      ctx.rotate(effect.angle);
+      ctx.strokeStyle = effect.color;
+      ctx.lineWidth = 8 * alpha + 2;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(0, 0, effect.radius * (0.72 + progress * 0.35), -0.92, 0.92);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.72)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, effect.radius * (0.56 + progress * 0.32), -0.68, 0.72);
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = effect.color;
+      ctx.lineWidth = 7 * alpha + 1;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius * progress, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius * 0.36 * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     ctx.restore();
   });
 }
@@ -478,6 +723,7 @@ function updateHud() {
   energyLabel.textContent = `${state.playerEnergy.toFixed(1)} / ${MAX_ENERGY}`;
   playerCrowns.textContent = state.playerCrowns;
   enemyCrowns.textContent = state.enemyCrowns;
+  if (versionLabel) versionLabel.textContent = `v${VERSION}`;
 }
 
 function loop(now) {

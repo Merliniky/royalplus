@@ -1,5 +1,7 @@
 # RoyalPlus
 
+Version: `0.1.2`
+
 RoyalPlus is an original browser UI demo for a real-time card battle tower-defense prototype. It is inspired by the genre interaction pattern, but uses original names, UI direction, and generated/code-created assets.
 
 ## Demo
@@ -23,7 +25,8 @@ http://localhost:4173
 - Card selection, valid deployment zone feedback, energy cost gating, and deployment.
 - Local scripted opponent AI.
 - Units move, acquire targets, attack, and show health/damage feedback.
-- Original generated visual reference asset included under `public/assets/generated/`.
+- Ranged troops and towers fire visible projectiles; melee troops show slash effects.
+- Original pseudo-3D generated visual reference assets included under `public/assets/generated/`.
 
 ## Docs
 
